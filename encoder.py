@@ -4,20 +4,16 @@ import numpy as np
 import psychoacoustic as psycho
 from common import *
 from parameters import *
-	
+from tqdm import tqdm
 
 
-def main(inwavfile, outmp3file, bitrate):
+def mp3_encode(inwavfile, outmp3file=None, bitrate=320, basepath="."):
   """Encoder main function."""
-
-  #inwavfile  = "../samples/sinestereo.wav"
-  #outmp3file = "../samples/sinestereo.mp3"
-  #bitrate = 320
   
   
   # Read WAVE file and set MPEG encoder parameters.
   input_buffer = WavRead(inwavfile)
-  params = EncoderParameters(input_buffer.fs, input_buffer.nch, bitrate)
+  params = EncoderParameters(input_buffer.fs, input_buffer.nch, bitrate, basepath)
   
 
   
@@ -26,7 +22,7 @@ def main(inwavfile, outmp3file, bitrate):
   # http://cnx.org/content/m32148/latest/?collection=col11121/latest
 
   # Read baseband filter samples
-  baseband_filter = filter_coeffs()
+  baseband_filter = filter_coeffs(basepath)
   # Allocate space for 32 subband filters of length 512.
   filterbank = np.zeros((N_SUBBANDS, FRAME_SIZE), dtype='float32')
   # Perform modulation.
@@ -39,8 +35,9 @@ def main(inwavfile, outmp3file, bitrate):
   subband_samples = np.zeros((params.nch, N_SUBBANDS, FRAMES_PER_BLOCK), dtype='float32') 
 
   # Main loop, executing until all samples have been processed.
-  while input_buffer.nprocessed_samples < input_buffer.nsamples:
-
+  all_subbands = []
+  for _ in tqdm(range(input_buffer.nsamples//(SHIFT_SIZE*FRAMES_PER_BLOCK))):
+  #while input_buffer.nprocessed_samples < input_buffer.nsamples:
     # In each block 12 frames are processed, which equals 12x32=384 new samples per block.
     for frm in range(FRAMES_PER_BLOCK):
       samples_read = input_buffer.read_samples(SHIFT_SIZE)
@@ -68,6 +65,7 @@ def main(inwavfile, outmp3file, bitrate):
     for ch in range(params.nch):
       scfindices[ch,:] = get_scalefactors(subband_samples[ch,:,:], params.table.scalefactor)
       subband_bit_allocation[ch,:] = psycho.model1(input_buffer.audio[ch].ordered(), params,scfindices)
+      all_subbands.append(subband_bit_allocation[0, :])
 
 
     # Scaling subband samples with determined scalefactors.
@@ -90,11 +88,14 @@ def main(inwavfile, outmp3file, bitrate):
 
 
     # Forming output bitsream and appending it to the output file.
-    bitstream_formatting(outmp3file,
-                         params,
-                         subband_bit_allocation,
-                         scfindices,
-                         subband_samples_quantized)
+    if outmp3file:
+      bitstream_formatting(outmp3file,
+                          params,
+                          subband_bit_allocation,
+                          scfindices,
+                          subband_samples_quantized)
+
+  return np.array(all_subbands), filterbank
   
 
 
@@ -113,4 +114,9 @@ if __name__ == "__main__":
   if os.path.exists(outmp3file):
     sys.exit('Output file already exists.')
 
-  main(inwavfile,outmp3file,bitrate)
+  all_subbands, filterbank = mp3_encode(inwavfile,outmp3file,bitrate)
+  import scipy.io as sio
+  sio.savemat("all_subbands.mat", {"all_subbands":all_subbands, "filterbank":filterbank})
+  import matplotlib.pyplot as plt
+  plt.imshow(all_subbands, aspect='auto', interpolation='none', cmap='magma')
+  plt.show()

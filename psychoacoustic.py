@@ -82,7 +82,7 @@ def model1(samples, params, sfindices):
     subband_spl[sb] = np.maximum(subband_spl[sb], 20 * np.log10(scf[0,sb] * 32768) - 10)
     
   peaks = []
-  for i in range(3, FFT_SIZE / 2 - 6):
+  for i in range(3, FFT_SIZE // 2 - 6):
     if X[i]>=X[i+1] and X[i]>X[i-1]:
       peaks.append(i)
 
@@ -120,7 +120,7 @@ def model1(samples, params, sfindices):
         weight += np.power(10, tonal.spl[j] / 10) * (table.bark[table.map[j]] - i)
     if msum > DBMIN:
       index  = weight/np.power(10, msum / 10.0)
-      center = table.cbound[i] + np.int(index * (table.cbound[i+1] - table.cbound[i])) 
+      center = table.cbound[i] + np.array(index * (table.cbound[i+1] - table.cbound[i]), dtype=int) 
       if tonal.flag[center] == TONE:
         center += 1
       tonal.flag[center] = NOISE

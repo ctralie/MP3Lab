@@ -22,92 +22,24 @@ class WavRead:
   """Read WAVE or PCM file into a circular buffer. Only standard PCM WAVE supported for now."""
   
 
-  def __init__(self, filename, fs=0, nch=0, nbits=0):
+  def __init__(self, filename, fs=44100, nch=1):
     """Open file and read header information."""
-    
-    if filename[-3:] == 'pcm':
-      if fs == 0 or nch == 0 or nbits == 0:
-        sys.exit('Please provide sampling frequency, number of channels \
-                  and number of bits per sample for PCM audio file.')
-      self.fs  = fs
-      self.nch = nch
-      self.nbits = nbits
-      self.nsamples = os.path.getsize(filename) * 8 / self.nbits / self.nch
-    
-    self.filename = filename
-    self.fp = open(self.filename, 'r')
-    
-    if filename[-3:] == 'wav':
-      self.read_header()
-      
-    if self.nbits == 8:
-      self.datatype = 'int8'
-    elif self.nbits == 16:
-      self.datatype = 'int16'
-    else:
-      self.datatype = 'int32'
-    
+
+    import librosa
+    self.x, self.fs = librosa.load(filename, sr=fs)
+    self.nch = nch 
+    self.nsamples = self.x.size
     self.nprocessed_samples = 0
     self.audio = []
-    for ch in range(self.nch):
+    for _ in range(self.nch):
       self.audio.append(CircBuffer(FRAME_SIZE))
 
 
-  def read_header(self):
-    """Read header information and determine if it is a valid MP3 file with PCM audio samples."""
-    
-    buffer = self.fp.read(128)
-    ind = buffer.find('RIFF')
-    if ind == -1:
-      sys.exit('Bad WAVE file.')
-    ind += 4
-    self.chunksize = struct.unpack('<I', buffer[ind:ind+4])[0]
-    ind = buffer.find('WAVE')
-    if ind == -1:
-      sys.exit('Bad WAVE file.')
-    ind = buffer.find('fmt ')
-    if ind == -1:
-      sys.exit('Bad WAVE file.')
-
-    ind += 4
-    sbchk1sz = struct.unpack('<I', buffer[ind:ind+4])[0]
-    if sbchk1sz != 16:
-      sys.exit('Unsupported WAVE file, compression used instead of PCM.')
-    ind += 4
-    audioformat = struct.unpack('<H', buffer[ind:ind+2])[0]
-    if audioformat != 1:
-      sys.exit('Unsupported WAVE file, compression used instead of PCM.')
-    ind += 2
-    self.nch = struct.unpack('<H', buffer[ind:ind+2])[0]
-    ind += 2
-    self.fs  = struct.unpack('<I', buffer[ind:ind+4])[0]
-    ind += 4
-    self.byterate = struct.unpack('<I', buffer[ind:ind+4])[0]
-    ind += 4
-    self.blockalign = struct.unpack('<H', buffer[ind:ind+2])[0]
-    ind += 2
-    self.nbits = struct.unpack('<H', buffer[ind:ind+2])[0]
-    if not (self.nbits in (8,16,32)):
-      sys.exit('Unsupported WAVE file, samples not int8, int16 or int32 type.')
-    ind = buffer.find('data')
-    if ind == -1:
-      sys.exit('Unsupported WAVE file, "data" keyword not found in file.')
-    ind += 4
-    sbchk2sz = struct.unpack('<I', buffer[ind:ind+4])[0]
-    self.nsamples = sbchk2sz * 8 / self.nbits / self.nch
-    self.fp.seek(ind+4)
-    
-
   def read_samples(self, nsamples):
     """Read desired number of samples from WAVE file and insert it in circular buffer."""
-    
-    readsize = self.nch * nsamples
-    frame = np.fromfile(self.fp, self.datatype, readsize)
-    frame.shape = (-1, self.nch)
-    for ch in range(self.nch):
-      self.audio[ch].insert(frame[:,ch].astype('float32') / (1<<self.nbits-1))
-    self.nprocessed_samples += frame.shape[0]
-    return frame.shape[0]
+    self.audio[0].insert(self.x[self.nprocessed_samples:self.nprocessed_samples+nsamples])
+    self.nprocessed_samples += nsamples
+    return nsamples
 
 
 
@@ -222,9 +154,8 @@ def bitstream_formatting(filename, params, allocation, scalefactor, sample):
         if allocation[ch][sb] != 0:
           buffer.insert(sample[ch][sb][s], allocation[ch][sb], True)
   
-  fp = file(filename, 'a+')
-  buffer.data.tofile(fp)
-  fp.close()
+  with open(filename, "a+") as fp:
+    buffer.data.tofile(fp)
 
 
 

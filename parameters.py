@@ -12,7 +12,7 @@ N_SUBBANDS =  32             # Number of subbands
 SHIFT_SIZE =  32             # Input buffer shift size
 SLOT_SIZE  =  32             # MPEG-1 Layer 1 slot size (minimum unit in a bitstream)
 FRAMES_PER_BLOCK = 12        # Number of frames processed in one block
-SUB_SIZE = FFT_SIZE/2/N_SUBBANDS
+SUB_SIZE = FFT_SIZE//2//N_SUBBANDS
 
 INF = 123456                 # Large number representing infinity
 EPS =   1e-6                 # Small number to avoid zero-division in log calculation etc.
@@ -31,7 +31,7 @@ IGNORE = 3
 class Tables:
   """Read all the tables necessary for encoding, including the psychoacoustic model tables."""
   
-  def __init__(self,fs,bitrate):
+  def __init__(self,fs,bitrate,basepath="."):
     """Select table depending on the sampling frequency. Bitrate is needed for adjustment of minimum hearing threshold."""
     
     if fs == 44100:
@@ -47,8 +47,8 @@ class Tables:
 
     # Read ISO psychoacoustic model 1 tables containing critical band rates,
     # absolute thresholds and critical band boundaries
-    freqband = np.loadtxt('tables/' + thrtable, dtype='float32')
-    critband = np.loadtxt('tables/' + crbtable, dtype='uint16'  )
+    freqband = np.loadtxt(f"{basepath}/tables/{thrtable}", dtype='float32')
+    critband = np.loadtxt(f"{basepath}/tables/{crbtable}", dtype='uint16')
 
     self.cbnum  = critband[-1,0] + 1
     self.cbound = critband[:,1]
@@ -60,11 +60,11 @@ class Tables:
     if bitrate >= 96:
       self.hear -= 12
 
-    self.map = np.zeros(FFT_SIZE / 2 + 1, dtype='uint16')
+    self.map = np.zeros(FFT_SIZE // 2 + 1, dtype='uint16')
     for i in range(self.subsize - 1):
       for j in range(self.line[i],self.line[i+1]):
         self.map[j] = i
-    for j in range(self.line[self.subsize - 1], FFT_SIZE / 2 + 1):
+    for j in range(self.line[self.subsize - 1], FFT_SIZE // 2 + 1):
       self.map[j] = self.subsize - 1
 
 
@@ -79,7 +79,7 @@ class Tables:
     
         
     # MPEG-1 Layer 1 scalefactor table.
-    self.scalefactor = np.loadtxt('tables/layer1scalefactors', dtype='float32') 
+    self.scalefactor = np.loadtxt(f"{basepath}/tables/layer1scalefactors", dtype='float32') 
     
 
     # MPEG-1 Layer 1 quantization coefficients.
@@ -100,7 +100,7 @@ class Tables:
 class EncoderParameters:
   """Parameters, tables and header of the MPEG-1 Layer 1 codec."""
   
-  def __init__(self, fs, nch, bitrate):
+  def __init__(self, fs, nch, bitrate, basepath="."):
     """Initialize with sampling frequency, number of channels and bitrate."""
     
     if bitrate == 32 and nch == 2:
@@ -141,7 +141,7 @@ class EncoderParameters:
                    self.modext<<4    | self.copyright<<3    | 
                    self.original<<2  | self.emphasis         )
                    
-    self.table = Tables(self.fs,bitrate)
+    self.table = Tables(self.fs,bitrate,basepath)
                      
   
 
@@ -171,18 +171,18 @@ class EncoderParameters:
 
 
 
-def filter_coeffs():
+def filter_coeffs(basepath="."):
   """Baseband subband filter prototype coefficients."""
 
-  return np.loadtxt('tables/LPfilterprototype', dtype='float32')
+  return np.loadtxt(f"{basepath}/tables/LPfilterprototype", dtype='float32')
 
 
 
 
-def iso_window():
+def iso_window(basepath="."):
   """Subband analysis window."""
 
-  return np.loadtxt('tables/ISOwindowcoeffs', dtype='float32')
+  return np.loadtxt(f"{basepath}/tables/ISOwindowcoeffs", dtype='float32')
     
     
 
@@ -190,7 +190,7 @@ def iso_window():
 def dct_matrix():
   """DCT matrix for subband analysis as described in ISO/IEC 11172-3."""
   
-  M = zeros((64,32))
+  M = np.zeros((64,32))
   for i in range(32):
     for k in range(64):
       M[k,i] = np.cos((2 * i + 1) * (k - 16) * np.pi / 64)    
